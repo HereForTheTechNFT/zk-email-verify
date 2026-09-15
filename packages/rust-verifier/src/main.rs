@@ -2,12 +2,13 @@ use std::{
     fs::OpenOptions,
     io::BufWriter,
     process::{Command, Stdio},
+    str::FromStr,
 };
 
 use ark_serialize::{CanonicalSerialize, Write};
 use clap::{Parser, Subcommand};
 use utils::verifier_utils::{
-    GrothBnProof, GrothBnVkey, JsonDecoder, PublicInputs, PublicInputsCount,
+    GrothBnProof, GrothBnVkey, GrothFp, JsonDecoder, PublicInputsCount,
 };
 
 #[derive(Parser)]
@@ -88,13 +89,10 @@ fn main() {
             );
 
             let proof = GrothBnProof::from_json_file(proof);
-            let public_inputs: PublicInputs<3> = PublicInputs::from_json_file(public_inputs);
+            let public_inputs = parse_public_inputs_file(public_inputs);
 
-            let mut serialized_public_inputs = Vec::new();
             let mut serialized_proof = Vec::new();
-
-            let writer = BufWriter::new(&mut serialized_public_inputs);
-            public_inputs.inputs.serialize_compressed(writer).unwrap();
+            let serialized_public_inputs = serialize_public_inputs(&public_inputs);
 
             let writer = BufWriter::new(&mut serialized_proof);
             proof.serialize_compressed(writer).unwrap();
@@ -103,6 +101,31 @@ fn main() {
             println!("PUBLIC_INPUTS: {:?}", serialized_public_inputs);
         }
     }
+}
+
+fn parse_public_inputs_file(file_path: &str) -> Vec<GrothFp> {
+    let json = std::fs::read_to_string(file_path).expect("Failed to read public inputs file");
+    parse_public_inputs_json(&json)
+}
+
+fn parse_public_inputs_json(json: &str) -> Vec<GrothFp> {
+    let inputs: Vec<String> = serde_json::from_str(json).expect("Invalid public inputs JSON");
+    inputs
+        .iter()
+        .map(|input| GrothFp::from_str(input).expect("Invalid public input field element"))
+        .collect()
+}
+
+fn serialize_public_inputs(inputs: &[GrothFp]) -> Vec<u8> {
+    let mut serialized = Vec::new();
+    let writer = BufWriter::new(&mut serialized);
+    let mut writer = writer;
+    for input in inputs {
+        input
+            .serialize_compressed(&mut writer)
+            .expect("Failed to serialize public input");
+    }
+    serialized
 }
 
 fn format_rust_code(code: &str) -> Result<String, std::io::Error> {
@@ -121,4 +144,15 @@ fn format_rust_code(code: &str) -> Result<String, std::io::Error> {
     let formatted_code = String::from_utf8(output.stdout).expect("Failed to read rustfmt output");
 
     Ok(formatted_code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_public_inputs_json;
+
+    #[test]
+    fn accepts_variable_public_input_lengths() {
+        assert_eq!(parse_public_inputs_json(r#"["1", "2"]"#).len(), 2);
+        assert_eq!(parse_public_inputs_json(r#"["1", "2", "3", "4"]"#).len(), 4);
+    }
 }
