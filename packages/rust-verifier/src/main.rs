@@ -92,13 +92,12 @@ fn main() {
             let public_inputs = parse_public_inputs_file(public_inputs);
 
             let mut serialized_proof = Vec::new();
-            let serialized_public_inputs = serialize_public_inputs(&public_inputs);
 
             let writer = BufWriter::new(&mut serialized_proof);
             proof.serialize_compressed(writer).unwrap();
 
             println!("PROOF: {:?}\n", serialized_proof);
-            println!("PUBLIC_INPUTS: {:?}", serialized_public_inputs);
+            println!("{}\n", format_public_inputs_output(&public_inputs));
         }
     }
 }
@@ -128,6 +127,10 @@ fn serialize_public_inputs(inputs: &[GrothFp]) -> Vec<u8> {
     serialized
 }
 
+fn format_public_inputs_output(inputs: &[GrothFp]) -> String {
+    format!("PUBLIC_INPUTS: {:?}", serialize_public_inputs(inputs))
+}
+
 fn format_rust_code(code: &str) -> Result<String, std::io::Error> {
     let mut rustfmt = Command::new("rustfmt")
         .stdin(Stdio::piped())
@@ -148,11 +151,23 @@ fn format_rust_code(code: &str) -> Result<String, std::io::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_public_inputs_json;
+    use super::{format_public_inputs_output, parse_public_inputs_json};
+    use ark_serialize::CanonicalSerialize;
 
     #[test]
-    fn accepts_variable_public_input_lengths() {
-        assert_eq!(parse_public_inputs_json(r#"["1", "2"]"#).len(), 2);
-        assert_eq!(parse_public_inputs_json(r#"["1", "2", "3", "4"]"#).len(), 4);
+    fn includes_all_public_inputs_in_command_output() {
+        for json in [r#"["1", "2"]"#, r#"["1", "2", "3", "4"]"#] {
+            let inputs = parse_public_inputs_json(json);
+            let mut expected = Vec::new();
+
+            for input in &inputs {
+                input.serialize_compressed(&mut expected).unwrap();
+            }
+
+            assert_eq!(
+                format_public_inputs_output(&inputs),
+                format!("PUBLIC_INPUTS: {:?}", expected)
+            );
+        }
     }
 }
